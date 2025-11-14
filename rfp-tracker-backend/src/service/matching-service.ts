@@ -229,6 +229,197 @@ export class MatchingService extends SquidService {
   }
 
   /**
+   * Checks if a project is a good fit by analyzing similar projects in the knowledge base
+   * @param projectDescription - The project to evaluate
+   * @param companyProfile - Company profile to match against
+   * @param similarityThreshold - Minimum score for similar projects (default: 70)
+   * @param fitThreshold - Minimum score for company fit (default: 60)
+   * @param limitSimilar - Number of similar projects to check (default: 10)
+   * @returns Analysis of whether the project is a good fit based on similar projects
+   */
+  @executable()
+  async isProjectGoodFitByKnowledgeBase(
+    projectDescription: string,
+    companyProfile: string,
+    similarityThreshold: number = 70,
+    fitThreshold: number = 60,
+    limitSimilar: number = 10
+  ): Promise<{
+    isGoodFit: boolean;
+    confidence: number;
+    reasoning: string;
+    similarProjects: Array<{
+      id: string;
+      similarity: number;
+      companyFitScore: number;
+      isCompanyFit: boolean;
+    }>;
+    statistics: {
+      totalSimilarProjects: number;
+      goodFitProjects: number;
+      goodFitPercentage: number;
+      averageFitScore: number;
+    };
+  }> {
+    if (!projectDescription || !companyProfile) {
+      throw new Error('Project description and company profile are required');
+    }
+
+    try {
+      const kb = this.squid.ai().knowledgeBase(this.KNOWLEDGE_BASE_ID);
+
+      // Step 1: Find similar projects using the project description
+      console.log('Searching for similar projects in knowledge base...');
+      const similarProjectResults = await kb.searchContextsWithPrompt({
+        prompt: `Find projects similar to this one:\n\n${projectDescription}`,
+        limit: limitSimilar,
+        rerank: true,
+      });
+      console.log(`Found ${similarProjectResults.length} similar projects`);
+
+      // Filter by similarity threshold
+      const relevantSimilarProjects = similarProjectResults.filter(
+        (result) => result.score >= similarityThreshold
+      );
+
+      if (relevantSimilarProjects.length === 0) {
+        return {
+          isGoodFit: false,
+          confidence: 0,
+          reasoning: 'No similar projects found in knowledge base to make a comparison.',
+          similarProjects: [],
+          statistics: {
+            totalSimilarProjects: 0,
+            goodFitProjects: 0,
+            goodFitPercentage: 0,
+            averageFitScore: 0,
+          },
+        };
+      }
+
+      // Step 2: For each similar project, check how well it fits the company
+      console.log(`Analyzing ${relevantSimilarProjects.length} relevant similar projects...`);
+      const agent = this.squid.ai().agent('matching-agent');
+
+      const similarProjectsAnalysis: Array<{
+        id: string;
+        similarity: number;
+        companyFitScore: number;
+        isCompanyFit: boolean;
+      }> = [];
+
+      for (const similarProject of relevantSimilarProjects) {
+        try {
+          const prompt = this.buildMatchingPrompt(companyProfile, similarProject.context.text);
+
+          const response = await agent.ask(prompt, {
+            responseFormat: 'json_object',
+            temperature: 0.3,
+            instructions:
+              'You are an expert at matching company capabilities with project requirements. Analyze the alignment and provide a score from 0-100.',
+          });
+
+          const matchData = JSON.parse(response);
+          const companyFitScore = matchData.score || 0;
+
+          similarProjectsAnalysis.push({
+            id: similarProject.context.metadata.projectId as string,
+            similarity: similarProject.score,
+            companyFitScore,
+            isCompanyFit: companyFitScore >= fitThreshold,
+          });
+          console.log(
+            `  ✓ ${similarProject.context.metadata.projectId}: similarity=${similarProject.score}, fit=${companyFitScore}`
+          );
+        } catch (error) {
+          console.error(
+            `  ✗ Error analyzing similar project ${similarProject.context.metadata.projectId}:`,
+            error instanceof Error ? error.message : error
+          );
+          // Continue with other projects even if one fails
+        }
+      }
+      console.log(`Successfully analyzed ${similarProjectsAnalysis.length} projects`);
+
+      // Step 3: Calculate statistics
+      const totalSimilarProjects = similarProjectsAnalysis.length;
+
+      // Check if we have any successfully analyzed projects
+      if (totalSimilarProjects === 0) {
+        return {
+          isGoodFit: false,
+          confidence: 0,
+          reasoning: 'Unable to analyze similar projects. No similar projects could be successfully processed.',
+          similarProjects: [],
+          statistics: {
+            totalSimilarProjects: 0,
+            goodFitProjects: 0,
+            goodFitPercentage: 0,
+            averageFitScore: 0,
+          },
+        };
+      }
+
+      const goodFitProjects = similarProjectsAnalysis.filter((p) => p.isCompanyFit).length;
+      const goodFitPercentage = (goodFitProjects / totalSimilarProjects) * 100;
+      const averageFitScore =
+        similarProjectsAnalysis.reduce((sum, p) => sum + p.companyFitScore, 0) /
+        totalSimilarProjects;
+
+      // Step 4: Determine if the project is a good fit (50% threshold)
+      const isGoodFit = goodFitPercentage >= 50;
+      const confidence = Math.round(goodFitPercentage);
+
+      // Step 5: Generate reasoning
+      const reasoning = this.generateFitReasoning(
+        isGoodFit,
+        goodFitPercentage,
+        averageFitScore,
+        totalSimilarProjects,
+        goodFitProjects
+      );
+
+      return {
+        isGoodFit,
+        confidence,
+        reasoning,
+        similarProjects: similarProjectsAnalysis,
+        statistics: {
+          totalSimilarProjects,
+          goodFitProjects,
+          goodFitPercentage: Math.round(goodFitPercentage * 100) / 100,
+          averageFitScore: Math.round(averageFitScore * 100) / 100,
+        },
+      };
+    } catch (error) {
+      console.error('Error checking project fit by knowledge base:', error);
+      throw new Error(
+        `Failed to check project fit: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Generate reasoning for the fit analysis
+   */
+  private generateFitReasoning(
+    isGoodFit: boolean,
+    goodFitPercentage: number,
+    averageFitScore: number,
+    totalProjects: number,
+    goodFitProjects: number
+  ): string {
+    const percentage = Math.round(goodFitPercentage);
+    const avgScore = Math.round(averageFitScore);
+
+    if (isGoodFit) {
+      return `This project is a GOOD FIT for your company. Analysis of ${totalProjects} similar projects shows that ${goodFitProjects} (${percentage}%) are a good match for your capabilities, with an average fit score of ${avgScore}/100. This indicates strong alignment between your company profile and projects of this type.`;
+    } else {
+      return `This project may NOT be a good fit for your company. Analysis of ${totalProjects} similar projects shows that only ${goodFitProjects} (${percentage}%) are a good match for your capabilities, with an average fit score of ${avgScore}/100. This suggests potential gaps between your company profile and projects of this type.`;
+    }
+  }
+
+  /**
    * Helper method to extract matched areas from context (simplified version)
    */
   private extractMatchedAreas(projectDescription: string, companyProfile: string): string[] {

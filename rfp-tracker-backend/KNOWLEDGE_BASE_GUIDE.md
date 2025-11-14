@@ -158,6 +158,100 @@ Array<{
 
 ---
 
+### 5. Check Project Fit by Similar Projects
+
+**Method:** `isProjectGoodFitByKnowledgeBase(projectDescription, companyProfile, similarityThreshold?, fitThreshold?, limitSimilar?)`
+
+Determines if a new project is a good fit by analyzing similar projects in the knowledge base. Uses a 50% threshold - if 50% or more of similar projects are a good fit for the company, the new project is recommended.
+
+```typescript
+const newProject = `
+  Project: E-commerce Platform with React
+  Requirements:
+  - React/Next.js frontend
+  - Node.js backend
+  - PostgreSQL database
+  - AWS deployment
+  ...
+`;
+
+const companyProfile = `
+  TechFlow Solutions specializes in:
+  - React, Next.js, TypeScript
+  - Node.js, Express
+  - AWS cloud services
+  ...
+`;
+
+const analysis = await squid.executeFunction(
+  'isProjectGoodFitByKnowledgeBase',
+  newProject,
+  companyProfile,
+  70,  // similarityThreshold: min score for similar projects
+  60,  // fitThreshold: min score for company fit
+  10   // limitSimilar: number of similar projects to analyze
+);
+```
+
+**Returns:**
+```typescript
+{
+  isGoodFit: boolean;          // true if ≥50% of similar projects are good fits
+  confidence: number;          // percentage of similar projects that are good fits
+  reasoning: string;           // detailed explanation of the decision
+  similarProjects: Array<{
+    id: string;
+    similarity: number;        // how similar to the input project (0-100)
+    companyFitScore: number;   // how well it fits the company (0-100)
+    isCompanyFit: boolean;     // true if score ≥ fitThreshold
+  }>;
+  statistics: {
+    totalSimilarProjects: number;
+    goodFitProjects: number;
+    goodFitPercentage: number;
+    averageFitScore: number;
+  };
+}
+```
+
+**Example Response:**
+```typescript
+{
+  isGoodFit: true,
+  confidence: 75,
+  reasoning: "This project is a GOOD FIT for your company. Analysis of 8 similar projects shows that 6 (75%) are a good match for your capabilities, with an average fit score of 82/100. This indicates strong alignment between your company profile and projects of this type.",
+  similarProjects: [
+    {
+      id: "proj-001",
+      similarity: 92,
+      companyFitScore: 88,
+      isCompanyFit: true
+    },
+    // ... more similar projects
+  ],
+  statistics: {
+    totalSimilarProjects: 8,
+    goodFitProjects: 6,
+    goodFitPercentage: 75.0,
+    averageFitScore: 82.5
+  }
+}
+```
+
+**How it works:**
+1. Finds similar projects in the knowledge base using semantic search
+2. For each similar project, calculates how well it fits the company profile
+3. If 50% or more of similar projects are good fits, recommends the new project
+4. Provides confidence score and detailed statistics
+
+**Use cases:**
+- Evaluating new RFP opportunities
+- Quick assessment before detailed proposal
+- Filtering projects before sales team involvement
+- Data-driven decision making for project selection
+
+---
+
 ## Comparison: Traditional vs Knowledge Base
 
 ### Traditional Approach (`matchProjects`)
