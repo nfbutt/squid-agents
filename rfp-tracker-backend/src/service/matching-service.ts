@@ -10,6 +10,24 @@ import { SquidService, executable } from '@squidcloud/backend';
 export interface ProjectTuple {
   id: string;
   description: string;
+  userId?: string;
+  solicitationId?: string;
+  title?: string;
+  agency?: string;
+  status?: string;
+  badge?: string;
+  postedDate?: string;
+  closingDate?: string;
+  samLink?: string;
+  dibbsLink?: string;
+  contactEmail?: string;
+  isFavorite?: boolean;
+  awardee?: string;
+  awardAmount?: number;
+  naicsCode?: string;
+  userStatus?: string;
+  budget?: number;
+  timeline?: string;
 }
 
 export interface MatchingResult {
@@ -22,7 +40,23 @@ export interface MatchingResult {
 
 export interface ProjectMetadata {
   projectId: string;
+  userId?: string;
+  solicitationId?: string;
   title?: string;
+  description?: string;
+  agency?: string;
+  status?: string;
+  badge?: string;
+  postedDate?: string;
+  closingDate?: string;
+  samLink?: string;
+  dibbsLink?: string;
+  contactEmail?: string;
+  isFavorite?: boolean;
+  awardee?: string;
+  awardAmount?: number;
+  naicsCode?: string;
+  userStatus?: string;
   budget?: number;
   timeline?: string;
   addedAt: string;
@@ -51,10 +85,106 @@ export class MatchingService extends SquidService {
             description: 'Unique identifier for the project',
           },
           {
+            name: 'userId',
+            dataType: 'string',
+            required: false,
+            description: 'User ID associated with the project',
+          },
+          {
+            name: 'solicitationId',
+            dataType: 'string',
+            required: false,
+            description: 'Solicitation ID from SAM.gov',
+          },
+          {
             name: 'title',
             dataType: 'string',
             required: false,
             description: 'Title or name of the project',
+          },
+          {
+            name: 'description',
+            dataType: 'string',
+            required: false,
+            description: 'Full description of the project',
+          },
+          {
+            name: 'agency',
+            dataType: 'string',
+            required: false,
+            description: 'Government agency posting the project',
+          },
+          {
+            name: 'status',
+            dataType: 'string',
+            required: false,
+            description: 'Current status of the project',
+          },
+          {
+            name: 'badge',
+            dataType: 'string',
+            required: false,
+            description: 'Badge or label for the project',
+          },
+          {
+            name: 'postedDate',
+            dataType: 'string',
+            required: false,
+            description: 'Date when the project was posted',
+          },
+          {
+            name: 'closingDate',
+            dataType: 'string',
+            required: false,
+            description: 'Closing date for project submissions',
+          },
+          {
+            name: 'samLink',
+            dataType: 'string',
+            required: false,
+            description: 'Link to SAM.gov listing',
+          },
+          {
+            name: 'dibbsLink',
+            dataType: 'string',
+            required: false,
+            description: 'Link to DIBBS listing',
+          },
+          {
+            name: 'contactEmail',
+            dataType: 'string',
+            required: false,
+            description: 'Contact email for the project',
+          },
+          {
+            name: 'isFavorite',
+            dataType: 'boolean',
+            required: false,
+            description: 'Whether the project is marked as favorite',
+          },
+          {
+            name: 'awardee',
+            dataType: 'string',
+            required: false,
+            description: 'Name of the contract awardee',
+          },
+          {
+            name: 'awardAmount',
+            dataType: 'number',
+            required: false,
+            description: 'Award amount in dollars',
+          },
+          {
+            name: 'naicsCode',
+            dataType: 'string',
+            required: false,
+            description: 'NAICS code for the project',
+          },
+          {
+            name: 'userStatus',
+            dataType: 'string',
+            required: false,
+            description: 'User-specific status for the project',
           },
           {
             name: 'budget',
@@ -110,7 +240,23 @@ export class MatchingService extends SquidService {
         text: project.description,
         metadata: {
           projectId: project.id,
+          userId: metadata?.userId,
+          solicitationId: metadata?.solicitationId,
           title: metadata?.title,
+          description: metadata?.description,
+          agency: metadata?.agency,
+          status: metadata?.status,
+          badge: metadata?.badge,
+          postedDate: metadata?.postedDate,
+          closingDate: metadata?.closingDate,
+          samLink: metadata?.samLink,
+          dibbsLink: metadata?.dibbsLink,
+          contactEmail: metadata?.contactEmail,
+          isFavorite: metadata?.isFavorite,
+          awardee: metadata?.awardee,
+          awardAmount: metadata?.awardAmount,
+          naicsCode: metadata?.naicsCode,
+          userStatus: metadata?.userStatus,
           budget: metadata?.budget,
           timeline: metadata?.timeline,
           addedAt: new Date().toISOString(),
@@ -147,10 +293,29 @@ export class MatchingService extends SquidService {
       const contextRequests = projects.map((project) => ({
         contextId: project.id,
         type: 'text' as const,
-        title: `Project ${project.id}`,
+        title: project.title || `Project ${project.id}`,
         text: project.description,
         metadata: {
           projectId: project.id,
+          userId: project.userId,
+          solicitationId: project.solicitationId,
+          title: project.title,
+          description: project.description,
+          agency: project.agency,
+          status: project.status,
+          badge: project.badge,
+          postedDate: project.postedDate,
+          closingDate: project.closingDate,
+          samLink: project.samLink,
+          dibbsLink: project.dibbsLink,
+          contactEmail: project.contactEmail,
+          isFavorite: project.isFavorite,
+          awardee: project.awardee,
+          awardAmount: project.awardAmount,
+          naicsCode: project.naicsCode,
+          userStatus: project.userStatus,
+          budget: project.budget,
+          timeline: project.timeline,
           addedAt: new Date().toISOString(),
         },
       }));
