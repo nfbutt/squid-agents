@@ -358,13 +358,19 @@ export class MatchingService extends SquidService {
    * @param companyProfile - Company profile to match against
    * @param limit - Maximum number of results to return (default: 10)
    * @param threshold - Minimum score threshold (default: 60)
+   * @param naicsCodes - Optional list of NAICS codes to filter by
+   * @param keywords - Optional list of keywords to filter by
+   * @param solicitations - Optional list of solicitation IDs to filter by
    * @returns Object with results array containing matching results with status, reasoning, and confidence
    */
   @executable()
   async matchProjectsWithKnowledgeBase(
     companyProfile: string,
     limit: number = 10,
-    threshold: number = 60
+    threshold: number = 60,
+    naicsCodes?: string[],
+    keywords?: string[],
+    solicitations?: string[]
   ): Promise<{ results: MatchingResult[] }> {
     if (!companyProfile) {
       throw new Error('Company profile is required');
@@ -373,15 +379,30 @@ export class MatchingService extends SquidService {
     try {
       const kb = this.squid.ai().knowledgeBase(this.KNOWLEDGE_BASE_ID);
 
+      // Build enhanced prompt with filters
+      let enhancedPrompt = `Find projects that match this company profile:\n\n${companyProfile}`;
+
+      if (naicsCodes && naicsCodes.length > 0) {
+        enhancedPrompt += `\n\nFilter by NAICS codes: ${naicsCodes.join(', ')}`;
+      }
+
+      if (keywords && keywords.length > 0) {
+        enhancedPrompt += `\n\nFilter by keywords: ${keywords.join(', ')}`;
+      }
+
+      if (solicitations && solicitations.length > 0) {
+        enhancedPrompt += `\n\nFilter by solicitation IDs: ${solicitations.join(', ')}`;
+      }
+
       // Perform semantic search using the company profile as the prompt
       const results = await kb.searchContextsWithPrompt({
-        prompt: `Find projects that match this company profile:\n\n${companyProfile}`,
+        prompt: enhancedPrompt,
         limit,
         rerank: true,
       });
 
-      // Transform results to new MatchingResult format
-      const matchingResults: MatchingResult[] = results.map((result) => {
+      // Transform results to new MatchingResult format with metadata
+      let matchingResults: Array<MatchingResult & { metadata: any }> = results.map((result) => {
         const projectId = result.context.metadata.projectId as string;
         const score = result.score;
 
@@ -396,17 +417,65 @@ export class MatchingService extends SquidService {
           status,
           reasoning: result.reasoning || 'No reasoning provided',
           confidence: Math.round(confidence * 100) / 100, // Round to 2 decimal places
+          metadata: result.context.metadata, // Include metadata for filtering
         };
       });
+
+      // Apply post-search filters
+      matchingResults = this.applyFilters(matchingResults, naicsCodes, keywords, solicitations);
 
       // Sort by confidence descending
       const sortedResults = matchingResults.sort((a, b) => b.confidence - a.confidence);
 
-      return { results: sortedResults };
+      // Remove metadata from final results
+      const finalResults: MatchingResult[] = sortedResults.map(({ metadata, ...rest }) => rest);
+
+      return { results: finalResults };
     } catch (error) {
       console.error('Error matching projects with knowledge base:', error);
       throw new Error(`Failed to match projects: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Apply filters to matching results
+   */
+  private applyFilters(
+    results: Array<MatchingResult & { metadata: any }>,
+    naicsCodes?: string[],
+    keywords?: string[],
+    solicitations?: string[]
+  ): Array<MatchingResult & { metadata: any }> {
+    let filtered = results;
+
+    // Filter by NAICS codes
+    if (naicsCodes && naicsCodes.length > 0) {
+      filtered = filtered.filter((result) => {
+        const projectNaics = result.metadata.naicsCode as string;
+        return projectNaics && naicsCodes.includes(projectNaics);
+      });
+    }
+
+    // Filter by keywords (check in description and title)
+    if (keywords && keywords.length > 0) {
+      filtered = filtered.filter((result) => {
+        const description = (result.metadata.description as string)?.toLowerCase() || '';
+        const title = (result.metadata.title as string)?.toLowerCase() || '';
+        const combinedText = `${description} ${title}`;
+
+        return keywords.some((keyword) => combinedText.includes(keyword.toLowerCase()));
+      });
+    }
+
+    // Filter by solicitation IDs
+    if (solicitations && solicitations.length > 0) {
+      filtered = filtered.filter((result) => {
+        const solicitationId = result.metadata.solicitationId as string;
+        return solicitationId && solicitations.includes(solicitationId);
+      });
+    }
+
+    return filtered;
   }
 
   /**
