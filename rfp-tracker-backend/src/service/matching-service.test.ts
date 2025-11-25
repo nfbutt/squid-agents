@@ -318,78 +318,92 @@ export async function runMatchingServiceTest() {
   console.log('\n' + '='.repeat(80));
 
   try {
-    console.log('\nProcessing projects...');
-    console.log(`Total projects to match: ${TEST_PROJECTS.length}\n`);
+    console.log('\nStoring projects in knowledge base...');
+    console.log(`Total projects to store: ${TEST_PROJECTS.length}\n`);
 
-    // Call the service using the Squid client
-    console.log('Calling matchProjects function via Squid client...');
-    const results = await squid.executeFunction(
-      'matchProjects',
-      COMPANY_PROFILE,
-      TEST_PROJECTS,
-      'matching-agent',
-      60
+    // First, store all projects in the knowledge base
+    await squid.executeFunction(
+      'storeProjects',
+      TEST_PROJECTS
     );
+
+    console.log('✅ Projects stored successfully!\n');
+
+    // Call the new matchProjectsWithKnowledgeBase function
+    console.log('Calling matchProjectsWithKnowledgeBase function via Squid client...');
+    const response = await squid.executeFunction(
+      'matchProjectsWithKnowledgeBase',
+      COMPANY_PROFILE,
+      10,  // limit
+      60   // threshold
+    );
+
+    const results = response.results;
 
     console.log('\n✅ MATCHING RESULTS RECEIVED:');
     console.log('='.repeat(80));
     results.forEach((result: any) => {
-      console.log(`\n${result.id}: ${result.score}% - ${result.isGoodFit ? '✓ GOOD FIT' : '✗ NOT A FIT'}`);
+      console.log(`\n${result.id}: ${result.status.toUpperCase()} (confidence: ${result.confidence})`);
       console.log(`Reasoning: ${result.reasoning}`);
-      console.log(`Matched Areas: ${result.matchedAreas.join(', ')}`);
     });
 
     // Expected results analysis:
     const expectedResults = {
       'proj-001': {
-        expected: 'HIGH',
-        reason: 'Perfect match - React, Node.js, PostgreSQL, AWS, e-commerce experience',
+        status: 'relevant',
+        confidence: 0.90,
+        reasoning: 'Perfect match - React, Node.js, PostgreSQL, AWS, e-commerce experience',
       },
       'proj-002': {
-        expected: 'LOW',
-        reason: 'Poor match - requires native iOS/Swift, company focuses on React Native',
+        status: 'irrelevant',
+        confidence: 0.30,
+        reasoning: 'Poor match - requires native iOS/Swift, company focuses on React Native',
       },
       'proj-003': {
-        expected: 'HIGH',
-        reason: 'Excellent match - React, Node.js, PostgreSQL, AWS, healthcare experience',
+        status: 'relevant',
+        confidence: 0.95,
+        reasoning: 'Excellent match - React, Node.js, PostgreSQL, AWS, healthcare experience',
       },
       'proj-004': {
-        expected: 'HIGH',
-        reason: 'Great match - OpenAI integration experience, React, Node.js, chatbot capability',
+        status: 'relevant',
+        confidence: 0.90,
+        reasoning: 'Great match - OpenAI integration experience, React, Node.js, chatbot capability',
       },
       'proj-005': {
-        expected: 'LOW',
-        reason: 'Poor match - no blockchain/Solidity experience mentioned in profile',
+        status: 'irrelevant',
+        confidence: 0.25,
+        reasoning: 'Poor match - no blockchain/Solidity experience mentioned in profile',
       },
       'proj-006': {
-        expected: 'HIGH',
-        reason: 'Strong match - React/TypeScript, Node.js, MongoDB, Redis, real-time experience',
+        status: 'relevant',
+        confidence: 0.93,
+        reasoning: 'Strong match - React/TypeScript, Node.js, MongoDB, Redis, real-time experience',
       },
       'proj-007': {
-        expected: 'MEDIUM',
-        reason: 'Moderate match - basic ML/AI mentioned, but not core expertise with TensorFlow',
+        status: 'relevant',
+        confidence: 0.55,
+        reasoning: 'Moderate match - basic ML/AI mentioned, but not core expertise with TensorFlow',
       },
       'proj-008': {
-        expected: 'LOW',
-        reason: 'Poor match - WordPress not mentioned, small project below company scale',
+        status: 'irrelevant',
+        confidence: 0.20,
+        reasoning: 'Poor match - WordPress not mentioned, small project below company scale',
       },
     };
 
-    console.log('EXPECTED MATCHING RESULTS:');
+    console.log('\n\nEXPECTED MATCHING RESULTS:');
     console.log('='.repeat(80));
 
-    TEST_PROJECTS.forEach((project) => {
-      const expected = expectedResults[project.id as keyof typeof expectedResults];
-      console.log(`\n${project.id}: ${expected.expected} MATCH`);
-      console.log(`Project: ${project.description.split('\n')[1].trim()}`);
-      console.log(`Reason: ${expected.reason}`);
+    Object.entries(expectedResults).forEach(([id, expected]) => {
+      console.log(`\n${id}: ${expected.status.toUpperCase()} (confidence: ${expected.confidence})`);
+      console.log(`Reasoning: ${expected.reasoning}`);
     });
 
     console.log('\n' + '='.repeat(80));
     console.log('\nTo run this test with live AI matching:');
     console.log('1. Ensure you have created the "matching-agent" in Squid Console');
     console.log('2. Deploy the service: npm run deploy');
-    console.log('3. Call the matchProjects function from your frontend or Squid Console');
+    console.log('3. Call the matchProjectsWithKnowledgeBase function from your frontend or Squid Console');
     console.log('='.repeat(80));
 
     return {
