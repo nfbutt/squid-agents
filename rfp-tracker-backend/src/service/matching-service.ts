@@ -32,6 +32,14 @@ export interface ProjectTuple {
 
 export interface MatchingResult {
   id: string;
+  status: 'relevant' | 'irrelevant';
+  reasoning: string;
+  confidence: number;
+}
+
+// Legacy interface for backward compatibility
+export interface LegacyMatchingResult {
+  id: string;
   score: number;
   isGoodFit: boolean;
   reasoning: string;
@@ -350,14 +358,14 @@ export class MatchingService extends SquidService {
    * @param companyProfile - Company profile to match against
    * @param limit - Maximum number of results to return (default: 10)
    * @param threshold - Minimum score threshold (default: 60)
-   * @returns Array of matching results with reasoning
+   * @returns Object with results array containing matching results with status, reasoning, and confidence
    */
   @executable()
   async matchProjectsWithKnowledgeBase(
     companyProfile: string,
     limit: number = 10,
     threshold: number = 60
-  ): Promise<MatchingResult[]> {
+  ): Promise<{ results: MatchingResult[] }> {
     if (!companyProfile) {
       throw new Error('Company profile is required');
     }
@@ -372,21 +380,29 @@ export class MatchingService extends SquidService {
         rerank: true,
       });
 
-      // Transform results to MatchingResult format
+      // Transform results to new MatchingResult format
       const matchingResults: MatchingResult[] = results.map((result) => {
         const projectId = result.context.metadata.projectId as string;
         const score = result.score;
 
+        // Convert score (0-100) to confidence (0-1)
+        const confidence = Math.round(score) / 100;
+
+        // Determine status based on threshold
+        const status: 'relevant' | 'irrelevant' = score >= threshold ? 'relevant' : 'irrelevant';
+
         return {
           id: projectId,
-          score,
-          isGoodFit: score >= threshold,
+          status,
           reasoning: result.reasoning || 'No reasoning provided',
-          matchedAreas: this.extractMatchedAreas(result.context.text, companyProfile),
+          confidence: Math.round(confidence * 100) / 100, // Round to 2 decimal places
         };
       });
 
-      return matchingResults.sort((a, b) => b.score - a.score);
+      // Sort by confidence descending
+      const sortedResults = matchingResults.sort((a, b) => b.confidence - a.confidence);
+
+      return { results: sortedResults };
     } catch (error) {
       console.error('Error matching projects with knowledge base:', error);
       throw new Error(`Failed to match projects: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -621,7 +637,7 @@ export class MatchingService extends SquidService {
    * @param projects - List of tuples containing project id and description
    * @param agentId - ID of the AI agent to use (default: 'matching-agent')
    * @param threshold - Optional threshold for determining good fit (default: 60)
-   * @returns Array of matching results with scores and fit determination
+   * @returns Array of matching results with scores and fit determination (legacy format)
    */
   @executable()
   async matchProjects(
@@ -629,13 +645,13 @@ export class MatchingService extends SquidService {
     projects: ProjectTuple[],
     agentId: string = 'matching-agent',
     threshold: number = 60
-  ): Promise<MatchingResult[]> {
+  ): Promise<LegacyMatchingResult[]> {
     if (!companyProfile || !projects || projects.length === 0) {
       throw new Error('Company profile and projects list are required');
     }
 
     const agent = this.squid.ai().agent(agentId);
-    const results: MatchingResult[] = [];
+    const results: LegacyMatchingResult[] = [];
 
     // Process each project with the AI agent
     for (const project of projects) {
@@ -709,7 +725,7 @@ Provide a score where:
 
   /**
    * Batch match with better performance for large lists
-   * Processes multiple projects in parallel batches
+   * Processes multiple projects in parallel batches (legacy format)
    */
   @executable()
   async matchProjectsBatch(
@@ -718,8 +734,8 @@ Provide a score where:
     agentId: string = 'matching-agent',
     threshold: number = 60,
     batchSize: number = 5
-  ): Promise<MatchingResult[]> {
-    const results: MatchingResult[] = [];
+  ): Promise<LegacyMatchingResult[]> {
+    const results: LegacyMatchingResult[] = [];
 
     // Process in batches to avoid overwhelming the AI service
     for (let i = 0; i < projects.length; i += batchSize) {
